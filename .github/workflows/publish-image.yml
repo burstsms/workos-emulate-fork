@@ -19,20 +19,29 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      # The moving tag is what Okteto's wrapper tracks. The SHA tag names one build.
+      # Publish only from burstsms/workos-emulate-fork. A fork of this repo has
+      # its own token and must not push ghcr.io/burstsms/workos-emulate-fork.
       - name: Image tags
         id: tags
         run: |
           set -eu
-          tags="${IMAGE}:${GITHUB_SHA}"
-          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-            tags="${tags},${IMAGE}:fork"
+          publish=false
+          tags="workos-emulate-fork:local"
+          if [ "$GITHUB_REPOSITORY" = "burstsms/workos-emulate-fork" ]; then
+            tags="${IMAGE}:${GITHUB_SHA}"
+            if [ "$GITHUB_REF" = "refs/heads/main" ] && { [ "$GITHUB_EVENT_NAME" = "push" ] || [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; }; then
+              tags="${tags},${IMAGE}:fork"
+              publish=true
+            fi
           fi
           echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+          echo "publish=${publish}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
-        if: github.ref == 'refs/heads/main'
+        if: steps.tags.outputs.publish == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -43,13 +52,13 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.ref == 'refs/heads/main' }}
+          push: ${{ steps.tags.outputs.publish == 'true' }}
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=registry,ref=${{ env.IMAGE }}:fork
           cache-to: type=inline
 
       - name: Make the package public
-        if: github.ref == 'refs/heads/main'
+        if: steps.tags.outputs.publish == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

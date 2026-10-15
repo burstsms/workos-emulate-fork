@@ -179,6 +179,16 @@ describe('Widget routes', () => {
       expect((await list(`Bearer ${token}`)).status).toBe(403);
     });
 
+    it('forbids a minted user-only token on the ApiKeys routes', async () => {
+      const res = await req('/widgets/token', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: 'user_456' }),
+      });
+      expect(res.status).toBe(200);
+      const token = (await json(res)).token as string;
+      expect((await list(`Bearer ${token}`)).status).toBe(403);
+    });
+
     it('rejects a widget token minted for a different widget', async () => {
       const token = await mintToken({ scopes: ['widgets:users-table:manage'] });
       const res = await list(`Bearer ${token}`);

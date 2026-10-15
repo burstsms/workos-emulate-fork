@@ -245,7 +245,7 @@ export const FEATURES: FeatureDef[] = [
     tags: ['widgets'],
     emulatorCreateRoutes: ['/_widgets'],
     notes:
-      'Mints widget tokens and serves the private `/_widgets/ApiKeys/*` routes the org-scope `<ApiKeys>` widget calls; that surface is outside the public spec, so it is not counted here. Other widgets and `scope="user"` API keys are not implemented.',
+      'Mints widget tokens, including a user-only token with no organization, and serves the private `/_widgets/ApiKeys/*` routes plus read-only `/_widgets/UserProfile/me` and `/_widgets/UserProfile/authentication-information`. Those private routes are outside the public spec, so they are not counted here. Profile mutations, other widgets, and `scope="user"` API keys are not implemented.',
   },
   {
     name: 'Radar',

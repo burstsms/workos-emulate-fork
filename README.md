@@ -909,6 +909,10 @@ with, as the SDKs' `widgets.getToken()` calls it. The requested scopes are minte
 `permissions` claim and the token expires in an hour — the two claims the widget client reads to
 decide whether it may render and when to refresh.
 
+UserProfile and UserSecurity are user-scoped. Their token is minted with `user_id` only: no
+`organization_id`, no `scopes`, an empty `permissions` array, and no `org_id` claim. Sending
+`scopes` without an organization is still rejected. Org-scoped widgets keep requiring both.
+
 The components never call the public REST API; they call a private `/_widgets/*` surface. The
 emulator serves the routes the org-scope `<ApiKeys>` widget uses, as a translation layer over the
 same store the public API-key routes use — so a key created in the widget authenticates requests,
@@ -922,6 +926,16 @@ and a key created through `POST /organizations/{id}/api_keys` (or seeded) shows 
 | `POST`   | `/_widgets/ApiKeys/{apiKeyId}/expire`     |
 | `GET`    | `/_widgets/ApiKeys/permissions`           |
 
+The same host serves the read-only calls the profile and security widgets make on load. Name,
+email, and picture come from the user record. Password "set up" follows `password_hash`, and
+authenticator "set up" follows a stored TOTP factor. Password, email, and authenticator changes
+are not implemented.
+
+| Method | Path                                               |
+| ------ | -------------------------------------------------- |
+| `GET`  | `/_widgets/UserProfile/me`                         |
+| `GET`  | `/_widgets/UserProfile/authentication-information` |
+
 Point the widgets provider at the emulator and hand it a token minted with the
 `widgets:api-keys:manage` scope:
 
@@ -931,16 +945,17 @@ Point the widgets provider at the emulator and hand it a token minted with the
 </WorkOsWidgets>
 ```
 
-`/_widgets/*` requests authenticate with the widget token, not an API key, and the organization is
-the token's `org_id`: keys are only ever listed, created, revoked, or expired within it, and another
-organization's key is a `404`. A missing, expired, or otherwise invalid token — or one minted
+`/_widgets/*` requests authenticate with the widget token, not an API key. ApiKeys uses the token's
+`org_id`: keys are only ever listed, created, revoked, or expired within it, and another
+organization's key is a `404`. UserProfile routes key off `sub` and accept a token with no
+organization. A missing, expired, or otherwise invalid token — or one minted
 without the widget's scope — is a `403`, the status the widget client treats as a token problem: it
 refetches the token once, then renders its expired-session or incorrect-permissions state.
 `GET /_widgets/ApiKeys/permissions` serves the environment's permissions (seeded, or created via
 `POST /authorization/permissions`), which is what fills the create dialog's checklist.
 
-Not implemented yet: the `scope="user"` variant (`/_widgets/UserApiKeys/*`) and the other widgets'
-`/_widgets/*` routes.
+Not implemented yet: UserProfile mutations, the `scope="user"` variant (`/_widgets/UserApiKeys/*`),
+and the other widgets' `/_widgets/*` routes.
 
 ## Testing Your Login Flow End-to-End
 

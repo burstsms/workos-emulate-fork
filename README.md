@@ -301,6 +301,15 @@ A pinned id must be a non-empty string, and ids must be unique within `organizat
 within `users` (a duplicate would silently overwrite the earlier record in the store). The
 pinned id is what the API, login tokens, and webhooks report for that resource.
 
+### Radar email challenge
+
+Set a user's `metadata.radar_email_challenge` to `"true"` to force an email challenge after a
+correct password. That grant returns `403` with code `radar_email_challenge`, a pending token,
+and `radar_challenge_id`, and emits `radar.challenge_created` without the code. Read the code
+from `GET /user_management/radar_challenges/{id}` and redeem it with grant
+`urn:workos:oauth:grant-type:radar-email-challenge:code`. Other users stay on the password
+path. This does not score risk.
+
 For OAuth-based logins (`authorization_code`, `refresh_token`, `device_code`), the authenticate
 response omits `authentication_method` by default: the hosted authorize flow carries no provider
 information, and the spec's `authentication_method` enum has no generic `OAuth` value — only

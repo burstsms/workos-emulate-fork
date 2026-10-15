@@ -250,7 +250,8 @@ export const FEATURES: FeatureDef[] = [
   {
     name: 'Radar',
     tags: ['radar'],
-    notes: 'Attempt listing only; no risk signals are computed.',
+    notes:
+      'Attempt listing only; no risk signals are computed. Password success for a user whose metadata `radar_email_challenge` is `"true"` returns `radar_email_challenge` and serves `GET /user_management/radar_challenges/{id}`.',
   },
   {
     name: 'Agent Auth',

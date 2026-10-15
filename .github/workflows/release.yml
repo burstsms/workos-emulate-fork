@@ -1,5 +1,6 @@
 name: Release
 
+# Skipped here. Publishing needs a Socket Firewall token and pushes ghcr.io/workos/emulate.
 # release-please creates the release and pushes its tag. This workflow builds
 # every standalone target, executes the exact artifacts on native hardware, and
 # uploads only binaries that pass. npm and Homebrew follow binary validation.
@@ -32,6 +33,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
     strategy:
@@ -105,6 +107,7 @@ jobs:
           retention-days: 1
 
   smoke:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     name: Smoke test ${{ matrix.asset }}
     needs: build
     strategy:
@@ -177,6 +180,7 @@ jobs:
             node /smoke-binary.mjs /workos'
 
   upload-binaries:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     name: Upload release binaries
     needs: [build, smoke]
     runs-on: ubuntu-latest
@@ -204,6 +208,7 @@ jobs:
           gh release upload "$TAG_NAME" dist/binaries/* --clobber
 
   publish-npm:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     name: Publish to npm
     needs: upload-binaries
     runs-on: ubuntu-latest
@@ -275,6 +280,7 @@ jobs:
           npm publish --tag ${{ steps.npm-tag.outputs.tag }} --access public --provenance
 
   publish-ghcr:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     name: Publish container image to GHCR
     needs: upload-binaries
     runs-on: ubuntu-latest
@@ -364,7 +370,7 @@ jobs:
     runs-on: macos-15
     needs: upload-binaries
     # Homebrew only ships stable releases; prerelease tags skip the bump.
-    if: ${{ !contains(inputs.tag_name, '-') }}
+    if: ${{ github.repository == 'workos/emulate' && success() && !contains(inputs.tag_name, '-') }}
     permissions:
       contents: read
     steps:

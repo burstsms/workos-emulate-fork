@@ -1,5 +1,6 @@
 name: Release Please
 
+# Skipped here. The called release workflow needs a Socket Firewall token and publishes ghcr.io/workos/emulate.
 on:
   push:
     branches:
@@ -13,6 +14,7 @@ permissions:
 
 jobs:
   release-please:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -25,7 +27,7 @@ jobs:
 
   publish:
     needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ github.repository == 'workos/emulate' && success() && needs.release-please.outputs.release_created == 'true' }}
     uses: ./.github/workflows/release.yml
     with:
       tag_name: ${{ needs.release-please.outputs.tag_name }}

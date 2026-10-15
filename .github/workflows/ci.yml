@@ -1,5 +1,6 @@
 name: CI
 
+# Skipped here. This fork has no PUBLIC_SOCKET_FIREWALL_TOKEN.
 on:
   push:
     branches: [main]
@@ -10,6 +11,7 @@ permissions:
 
 jobs:
   test:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -90,6 +92,7 @@ jobs:
           ruby -c /tmp/workos-emulate.rb
 
   node-smoke:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     name: Node ${{ matrix.node }} compatibility
     runs-on: ubuntu-latest
     strategy:
@@ -126,6 +129,7 @@ jobs:
         run: node scripts/smoke-node.mjs
 
   docker:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     name: Docker build
     runs-on: ubuntu-latest
     steps:
@@ -195,6 +199,7 @@ jobs:
           curl --retry 10 --retry-delay 1 --retry-all-errors --fail http://localhost:4100/health
 
   docker-arm64:
+    if: ${{ github.repository == 'workos/emulate' && success() }}
     name: Docker build (arm64)
     # Native ARM runner — builds the arm64 image the release workflow publishes
     # to GHCR, without QEMU emulation. Mirrors `docker` above on ubuntu-24.04-arm

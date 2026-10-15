@@ -13,6 +13,7 @@ import {
 import type { WorkOSApiKey, WorkOSPermission } from '../entities.js';
 import { apiKeyOrganizationId, deleteApiKey, expireApiKey, issueApiKey, obfuscateApiKey } from '../helpers.js';
 import { getWorkOSStore } from '../store.js';
+import { userProfileRoutes } from './user-profile.js';
 
 /**
  * The scope the org-scope `<ApiKeys>` widget requires: `WidgetSessionTokenScopes.WidgetsApiKeysManage`
@@ -145,13 +146,16 @@ export function widgetRoutes(ctx: RouteContext): void {
     const userId = body.user_id as string | undefined;
     const scopes = body.scopes;
 
-    if (!organizationId) {
-      throw validationError('organization_id is required', [{ field: 'organization_id', code: 'required' }]);
-    }
     if (!userId) {
       throw validationError('user_id is required', [{ field: 'user_id', code: 'required' }]);
     }
-    if (!Array.isArray(scopes) || !scopes.every((scope) => typeof scope === 'string')) {
+    // UserProfile and UserSecurity are user-scoped: the official API omits organization_id
+    // and scopes. An organization is required only when scopes are present.
+    const userOnly = !organizationId;
+    if (userOnly && scopes !== undefined) {
+      throw validationError('organization_id is required', [{ field: 'organization_id', code: 'required' }]);
+    }
+    if (!userOnly && (!Array.isArray(scopes) || !scopes.every((scope) => typeof scope === 'string'))) {
       throw validationError('scopes is required', [{ field: 'scopes', code: 'required' }]);
     }
 
@@ -161,9 +165,9 @@ export function widgetRoutes(ctx: RouteContext): void {
     // client reads — rather than a `scopes` claim nothing does.
     const token = jwt.sign({
       sub: userId,
-      org_id: organizationId,
+      ...(userOnly ? {} : { org_id: organizationId }),
       aud: WIDGET_TOKEN_AUDIENCE,
-      permissions: scopes as string[],
+      permissions: userOnly ? [] : (scopes as string[]),
     });
 
     return c.json({ token });
@@ -189,7 +193,11 @@ export function widgetRoutes(ctx: RouteContext): void {
   // A token minted for another widget is a token problem, so this is the one business rule on
   // these routes that answers 403: the client then reports "incorrect permissions".
   app.use('/_widgets/ApiKeys/*', async (c, next) => {
-    if (!widgetAuth(c).permissions.includes(WIDGET_SCOPE_API_KEYS_MANAGE)) {
+    const auth = widgetAuth(c);
+    if (!auth.organizationId) {
+      throw widgetForbidden('Widget token does not carry an organization');
+    }
+    if (!auth.permissions.includes(WIDGET_SCOPE_API_KEYS_MANAGE)) {
       throw widgetForbidden(`Widget token lacks the ${WIDGET_SCOPE_API_KEYS_MANAGE} scope`);
     }
     await next();
@@ -265,4 +273,6 @@ export function widgetRoutes(ctx: RouteContext): void {
     const page = paginateForWidget(permissions, params);
     return c.json({ data: page.data.map(formatWidgetPermission), list_metadata: page.list_metadata });
   });
+
+  userProfileRoutes(ctx);
 }

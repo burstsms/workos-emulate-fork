@@ -9,7 +9,8 @@ export interface WorkOSAuthContext {
 
 /**
  * The verified widget session behind a `/_widgets/*` request. No `/_widgets` path carries an
- * organization id, so the token's `org_id` is the only source of the organization context.
+ * organization id, so the token's `org_id` is the only source of it. UserProfile omits
+ * `org_id`; `organizationId` is then empty and org-scoped routes refuse the token.
  */
 export interface WidgetAuthContext {
   organizationId: string;
@@ -78,8 +79,9 @@ export function widgetForbidden(message: string): WorkOSApiError {
 
 /**
  * Authenticate `/_widgets/*` with the JWT `POST /widgets/token` mints, instead of an API key.
- * The token is verified against the emulator's own signing key, must carry the widgets
- * audience, and must resolve an organization — the org scope every widget route works in.
+ * The token is verified against the emulator's own signing key and must carry the widgets
+ * audience. Organization is optional: UserProfile and UserSecurity tokens omit `org_id`.
+ * ApiKeys still refuses a token that has none.
  */
 export function widgetAuthMiddleware(jwt: JWTManager) {
   return async (c: Context, next: Next) => {
@@ -98,12 +100,12 @@ export function widgetAuthMiddleware(jwt: JWTManager) {
     }
 
     if (payload.aud !== WIDGET_TOKEN_AUDIENCE) throw widgetForbidden('Token is not a widget token');
-    if (typeof payload.org_id !== 'string' || !payload.org_id) {
-      throw widgetForbidden('Widget token does not carry an organization');
+    if (typeof payload.sub !== 'string' || !payload.sub) {
+      throw widgetForbidden('Widget token does not carry a user');
     }
 
     c.set('widgetAuth', {
-      organizationId: payload.org_id,
+      organizationId: typeof payload.org_id === 'string' ? payload.org_id : '',
       userId: payload.sub,
       permissions: Array.isArray(payload.permissions) ? payload.permissions : [],
     } satisfies WidgetAuthContext);

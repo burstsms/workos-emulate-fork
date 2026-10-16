@@ -48,6 +48,8 @@ interface PendingAuth {
   auth_method: string;
   /** Carried across an MFA challenge so the second factor doesn't drop a pending invitation. */
   invitation_token?: string | null;
+  /** The only grant that may consume this token. A different grant leaves it in place. */
+  stage?: 'radar_email_challenge' | 'mfa' | 'email_verification' | 'organization_selection';
 }
 
 /**
@@ -702,6 +704,12 @@ export function authRoutes(ctx: RouteContext): void {
       });
     };
 
+    const requireStage = (pending: PendingAuth, stage: NonNullable<PendingAuth['stage']>): void => {
+      if (pending.stage !== stage) {
+        throw new WorkOSApiError(400, 'Invalid pending authentication token', 'invalid_pending_authentication_token');
+      }
+    };
+
     /**
      * Initiate the MFA second factor. Records the primary method on a pending-auth token so
      * the eventual session reports it (not 'unknown'), creates a challenge for the factor, and
@@ -721,6 +729,7 @@ export function authRoutes(ctx: RouteContext): void {
         organization_id: orgId,
         auth_method: primaryMethod,
         invitation_token: invitation?.token ?? null,
+        stage: 'mfa',
       });
       const challenge = ws.authChallenges.insert({
         object: 'authentication_challenge',
@@ -760,6 +769,7 @@ export function authRoutes(ctx: RouteContext): void {
         organization_id: orgId,
         auth_method: primaryMethod,
         invitation_token: invitation?.token ?? null,
+        stage: 'email_verification',
       });
       const verification = ws.emailVerifications.insert({
         object: 'email_verification',
@@ -794,6 +804,7 @@ export function authRoutes(ctx: RouteContext): void {
         organization_id: orgId,
         auth_method: primaryMethod,
         invitation_token: invitation?.token ?? null,
+        stage: 'radar_email_challenge',
       });
       const now = new Date().toISOString();
       const challenge: RadarEmailChallengeRecord = {
@@ -1062,6 +1073,7 @@ export function authRoutes(ctx: RouteContext): void {
               'invalid_pending_authentication_token',
             );
           }
+          requireStage(pending, 'email_verification');
         }
         const userId = pending?.user_id ?? (body.user_id as string);
         if (!code || !userId) {
@@ -1105,6 +1117,14 @@ export function authRoutes(ctx: RouteContext): void {
         // back to 'unknown' as before.
         authMethod = 'EmailVerification';
         sessionAuthMethod = pending?.auth_method;
+        const primary = pending?.auth_method ?? 'Password';
+        if (user?.metadata.radar_email_challenge === 'true') {
+          return issueRadarEmailChallenge(user, organizationId, primary);
+        }
+        const verifiedFactors = user ? ws.authFactors.findBy('user_id', user.id) : [];
+        if (user && verifiedFactors.length > 0) {
+          return issueMfaChallenge(user, organizationId, primary, verifiedFactors[0]);
+        }
         break;
       }
 
@@ -1160,6 +1180,7 @@ export function authRoutes(ctx: RouteContext): void {
         if (!pending) {
           throw new WorkOSApiError(400, 'Invalid pending authentication token', 'invalid_pending_authentication_token');
         }
+        requireStage(pending, 'mfa');
 
         const challenge = ws.authChallenges.get(challengeId);
         if (!challenge) {
@@ -1219,6 +1240,7 @@ export function authRoutes(ctx: RouteContext): void {
         if (!pending) {
           throw new WorkOSApiError(400, 'Invalid pending authentication token', 'invalid_pending_authentication_token');
         }
+        requireStage(pending, 'organization_selection');
 
         const org = ws.organizations.get(orgId);
         if (!org) throw notFound('Organization');
@@ -1268,6 +1290,7 @@ export function authRoutes(ctx: RouteContext): void {
         if (!pending) {
           throw new WorkOSApiError(400, 'Invalid pending authentication token', 'invalid_pending_authentication_token');
         }
+        requireStage(pending, 'radar_email_challenge');
 
         const challenge = store.getData<RadarEmailChallengeRecord>(radarChallengeKey(challengeId));
         if (!challenge || challenge.user_id !== pending.user_id) {
@@ -1287,6 +1310,11 @@ export function authRoutes(ctx: RouteContext): void {
 
         store.deleteData(radarChallengeKey(challenge.id));
         store.deleteData(`${STORE_KEY_PREFIXES.pendingAuth}${pendingToken}`);
+
+        const enrolled = ws.authFactors.findBy('user_id', signedIn.id);
+        if (enrolled.length > 0) {
+          return issueMfaChallenge(signedIn, pending.organization_id, pending.auth_method, enrolled[0]);
+        }
 
         user = signedIn;
         organizationId = pending.organization_id;
@@ -1394,6 +1422,7 @@ export function authRoutes(ctx: RouteContext): void {
           organization_id: null,
           auth_method: sessionAuthMethod ?? authMethod,
           invitation_token: invitation?.token ?? null,
+          stage: 'organization_selection',
         });
         return c.json(
           {

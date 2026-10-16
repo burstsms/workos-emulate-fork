@@ -1266,6 +1266,7 @@ describe('Auth routes', () => {
       user_id: user.id,
       organization_id: null,
       auth_method: 'Password',
+      stage: 'organization_selection',
     });
 
     const res = await app.request('/user_management/authenticate', {
@@ -1295,6 +1296,7 @@ describe('Auth routes', () => {
         user_id: user.id,
         organization_id: null,
         auth_method: 'Password',
+        stage: 'organization_selection',
       });
 
     const select = (organizationId: string) =>
@@ -2212,6 +2214,7 @@ describe('Auth routes', () => {
       user_id: user.id,
       organization_id: null,
       auth_method: 'Password',
+      stage: 'mfa',
     });
 
     const res = await app.request('/user_management/authenticate', {
@@ -2255,6 +2258,7 @@ describe('Auth routes', () => {
       user_id: user.id,
       organization_id: null,
       auth_method: 'MFA',
+      stage: 'mfa',
     });
 
     const res = await app.request('/user_management/authenticate', {
@@ -2901,7 +2905,12 @@ describe('authentication events (spec-named, spec-shaped)', () => {
       code: '123456',
     });
     const pendingToken = 'pending_evt_mfa';
-    store.setData(`pending_auth:${pendingToken}`, { user_id: user.id, organization_id: null, auth_method: 'MFA' });
+    store.setData(`pending_auth:${pendingToken}`, {
+      user_id: user.id,
+      organization_id: null,
+      auth_method: 'MFA',
+      stage: 'mfa',
+    });
 
     await app.request('/user_management/authenticate', {
       method: 'POST',

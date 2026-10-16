@@ -394,7 +394,7 @@ export function newTotp(issuer: string, user: string, secret?: string): WorkOSAu
 // ponytail: a valid 1×1 PNG, not a scannable code — the spec requires the field and SDKs require a
 // string, and the emulator never checks a real TOTP code. Add a QR encoder if a consumer's UI
 // test needs to scan it; `uri` already carries everything the code would.
-const TOTP_QR_CODE =
+export const TOTP_QR_CODE =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
 /** The spec's AuthenticationFactor: what GET and LIST return, secrets stripped. */

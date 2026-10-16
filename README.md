@@ -926,15 +926,27 @@ and a key created through `POST /organizations/{id}/api_keys` (or seeded) shows 
 | `POST`   | `/_widgets/ApiKeys/{apiKeyId}/expire`     |
 | `GET`    | `/_widgets/ApiKeys/permissions`           |
 
-The same host serves the read-only calls the profile and security widgets make on load. Name,
-email, and picture come from the user record. Password "set up" follows `password_hash`, and
-authenticator "set up" follows a stored TOTP factor. Password, email, and authenticator changes
-are not implemented.
+The same host serves the profile and security widgets. Name, email, and picture come from the
+user record. Password "set up" follows `password_hash`, and authenticator "set up" follows a stored
+TOTP factor. `POST /_widgets/UserProfile/send-verification` then `POST /verify` returns an elevated
+token. Creating a password, changing the email, and enrolling or removing an authenticator send
+it as `x-elevated-access-token`. `POST /update-password` does not: it checks `currentPassword` instead.
+Any non-empty code completes a verification step. A new password must be at least 8 characters.
 
-| Method | Path                                               |
-| ------ | -------------------------------------------------- |
-| `GET`  | `/_widgets/UserProfile/me`                         |
-| `GET`  | `/_widgets/UserProfile/authentication-information` |
+| Method   | Path                                               |
+| -------- | -------------------------------------------------- |
+| `GET`    | `/_widgets/UserProfile/me`                         |
+| `POST`   | `/_widgets/UserProfile/me`                         |
+| `GET`    | `/_widgets/UserProfile/authentication-information` |
+| `POST`   | `/_widgets/UserProfile/send-verification`          |
+| `POST`   | `/_widgets/UserProfile/verify`                     |
+| `POST`   | `/_widgets/UserProfile/create-password`            |
+| `POST`   | `/_widgets/UserProfile/update-password`            |
+| `POST`   | `/_widgets/UserProfile/send-email-change`          |
+| `POST`   | `/_widgets/UserProfile/verify-email-change`        |
+| `POST`   | `/_widgets/UserProfile/create-totp-factor`         |
+| `POST`   | `/_widgets/UserProfile/verify-totp-factor`         |
+| `DELETE` | `/_widgets/UserProfile/totp-factors`               |
 
 Point the widgets provider at the emulator and hand it a token minted with the
 `widgets:api-keys:manage` scope:
@@ -954,7 +966,7 @@ refetches the token once, then renders its expired-session or incorrect-permissi
 `GET /_widgets/ApiKeys/permissions` serves the environment's permissions (seeded, or created via
 `POST /authorization/permissions`), which is what fills the create dialog's checklist.
 
-Not implemented yet: UserProfile mutations, the `scope="user"` variant (`/_widgets/UserApiKeys/*`),
+Not implemented yet: passkeys, sessions, the `scope="user"` variant (`/_widgets/UserApiKeys/*`),
 and the other widgets' `/_widgets/*` routes.
 
 ## Testing Your Login Flow End-to-End

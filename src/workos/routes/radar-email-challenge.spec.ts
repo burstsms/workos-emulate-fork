@@ -31,14 +31,14 @@ describe('radar email challenge', () => {
       body: JSON.stringify(body),
     });
 
-  function insertUser(email: string, metadata: Record<string, string>) {
+  function insertUser(email: string, metadata: Record<string, string>, emailVerified = true) {
     return getWorkOSStore(store).users.insert({
       object: 'user',
       name: null,
       email,
       first_name: null,
       last_name: null,
-      email_verified: true,
+      email_verified: emailVerified,
       profile_picture_url: null,
       last_sign_in_at: null,
       external_id: null,
@@ -173,6 +173,72 @@ describe('radar email challenge', () => {
         .events.all()
         .some((event) => event.event === 'radar.challenge_created'),
     ).toBe(false);
+  });
+
+  it('does not let organization selection spend the radar token', async () => {
+    const user = insertUser('radar@test.com', { radar_email_challenge: 'true' });
+    const org = joinOrg(user.id);
+    const challenged = await json(
+      await authenticate({ grant_type: 'password', email: 'radar@test.com', password: 'secret' }),
+    );
+    const skipped = await authenticate({
+      grant_type: 'urn:workos:oauth:grant-type:organization-selection',
+      pending_authentication_token: challenged.pending_authentication_token,
+      organization_id: org.id,
+    });
+    expect(skipped.status).toBe(400);
+    expect((await json(skipped)).code).toBe('invalid_pending_authentication_token');
+
+    const fetched = await json(await req(`/user_management/radar_challenges/${challenged.radar_challenge_id}`));
+    const done = await authenticate({
+      grant_type: 'urn:workos:oauth:grant-type:radar-email-challenge:code',
+      code: fetched.code,
+      radar_challenge_id: challenged.radar_challenge_id,
+      pending_authentication_token: challenged.pending_authentication_token,
+    });
+    expect(done.status).toBe(200);
+  });
+
+  it('asks for the authenticator after the radar code', async () => {
+    const user = insertUser('radar@test.com', { radar_email_challenge: 'true' });
+    joinOrg(user.id);
+    getWorkOSStore(store).authFactors.insert({
+      object: 'authentication_factor',
+      user_id: user.id,
+      type: 'totp',
+      totp: { issuer: 'WorkOS', user: 'radar@test.com', secret: 'secret', uri: 'otpauth://totp' },
+    });
+    const challenged = await json(
+      await authenticate({ grant_type: 'password', email: 'radar@test.com', password: 'secret' }),
+    );
+    const fetched = await json(await req(`/user_management/radar_challenges/${challenged.radar_challenge_id}`));
+    const done = await authenticate({
+      grant_type: 'urn:workos:oauth:grant-type:radar-email-challenge:code',
+      code: fetched.code,
+      radar_challenge_id: challenged.radar_challenge_id,
+      pending_authentication_token: challenged.pending_authentication_token,
+    });
+    expect(done.status).toBe(403);
+    const body = await json(done);
+    expect(body.code).toBe('mfa_challenge');
+    expect(body).not.toHaveProperty('access_token');
+  });
+
+  it('challenges radar after an unverified user proves the mailbox', async () => {
+    const user = insertUser('radar@test.com', { radar_email_challenge: 'true' }, false);
+    joinOrg(user.id);
+    const gated = await json(
+      await authenticate({ grant_type: 'password', email: 'radar@test.com', password: 'secret' }),
+    );
+    expect(gated.code).toBe('email_verification_required');
+    const verification = getWorkOSStore(store).emailVerifications.findBy('user_id', user.id)[0];
+    const verified = await authenticate({
+      grant_type: 'urn:workos:oauth:grant-type:email-verification:code',
+      code: verification.code,
+      pending_authentication_token: gated.pending_authentication_token,
+    });
+    expect(verified.status).toBe(403);
+    expect((await json(verified)).code).toBe('radar_email_challenge');
   });
 
   it('returns 404 for an unknown challenge', async () => {

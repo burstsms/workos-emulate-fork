@@ -267,9 +267,9 @@ export function userProfileRoutes(ctx: RouteContext): void {
   });
 
   app.post('/_widgets/UserProfile/verify-totp-factor', async (c) => {
+    const body = await parseJsonBody(c);
     const user = userFor(c);
     requireElevated(c, user.id);
-    const body = await parseJsonBody(c);
     requireCode(body.code);
     const challengeId = body.authenticationChallengeId;
     if (typeof challengeId !== 'string' || !challengeId) {

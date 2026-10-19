@@ -19,6 +19,7 @@ export const STORE_KEY_PREFIXES = {
   ssoLogout: 'sso_logout:',
   auditSchema: 'audit_schema_',
   radarIpList: 'radar_ip_list',
+  radarChallenge: 'radar_challenge:',
 } as const;
 
 /**

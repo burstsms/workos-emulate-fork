@@ -241,6 +241,108 @@ describe('radar email challenge', () => {
     expect((await json(verified)).code).toBe('radar_email_challenge');
   });
 
+  it('does not record a tokenless email verification as a password login', async () => {
+    const user = insertUser('verify@test.com', {}, false);
+    const ws = getWorkOSStore(store);
+    const verification = ws.emailVerifications.insert({
+      object: 'email_verification',
+      user_id: user.id,
+      email: user.email,
+      code: '424242',
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+    });
+    ws.authFactors.insert({
+      object: 'authentication_factor',
+      user_id: user.id,
+      type: 'totp',
+      totp: { issuer: 'WorkOS', user: user.email, secret: 'secret', uri: 'otpauth://totp' },
+    });
+
+    const challenged = await json(
+      await authenticate({
+        grant_type: 'urn:workos:oauth:grant-type:email-verification:code',
+        user_id: user.id,
+        code: verification.code,
+      }),
+    );
+    expect(challenged.code).toBe('mfa_challenge');
+    const pending = store.getData<{ auth_method: string }>(`pending_auth:${challenged.pending_authentication_token}`);
+    expect(pending?.auth_method).toBe('EmailVerification');
+
+    const factorChallenge = ws.authChallenges.get(challenged.authentication_challenge.id)!;
+    const done = await authenticate({
+      grant_type: 'urn:workos:oauth:grant-type:mfa-totp',
+      code: factorChallenge.code,
+      pending_authentication_token: challenged.pending_authentication_token,
+      authentication_challenge_id: challenged.authentication_challenge.id,
+    });
+    expect(done.status).toBe(200);
+    expect(await json(done)).not.toHaveProperty('authentication_method');
+    expect(ws.sessions.findBy('user_id', user.id)[0]?.auth_method).toBe('unknown');
+  });
+
+  it('keeps an invitation across the radar code and the authenticator', async () => {
+    const user = insertUser('radar@test.com', { radar_email_challenge: 'true' });
+    const ws = getWorkOSStore(store);
+    const org = ws.organizations.insert({
+      object: 'organization',
+      name: 'Invited Corp',
+      external_id: null,
+      metadata: {},
+      stripe_customer_id: null,
+      allow_profiles_outside_organization: false,
+      entitlements: [],
+    });
+    const invited = await json(
+      await req('/user_management/invitations', {
+        method: 'POST',
+        body: JSON.stringify({ email: user.email, organization_id: org.id, role_slug: 'admin' }),
+      }),
+    );
+    ws.authFactors.insert({
+      object: 'authentication_factor',
+      user_id: user.id,
+      type: 'totp',
+      totp: { issuer: 'WorkOS', user: user.email, secret: 'secret', uri: 'otpauth://totp' },
+    });
+
+    const challenged = await json(
+      await authenticate({
+        grant_type: 'password',
+        email: user.email,
+        password: 'secret',
+        invitation_token: invited.token,
+      }),
+    );
+    expect(challenged.code).toBe('radar_email_challenge');
+    const radar = await json(await req(`/user_management/radar_challenges/${challenged.radar_challenge_id}`));
+    const afterRadar = await json(
+      await authenticate({
+        grant_type: 'urn:workos:oauth:grant-type:radar-email-challenge:code',
+        code: radar.code,
+        radar_challenge_id: challenged.radar_challenge_id,
+        pending_authentication_token: challenged.pending_authentication_token,
+      }),
+    );
+    expect(afterRadar.code).toBe('mfa_challenge');
+    const pending = store.getData<{ invitation_token?: string | null }>(
+      `pending_auth:${afterRadar.pending_authentication_token}`,
+    );
+    expect(pending?.invitation_token).toBe(invited.token);
+
+    const factorChallenge = ws.authChallenges.get(afterRadar.authentication_challenge.id)!;
+    const done = await json(
+      await authenticate({
+        grant_type: 'urn:workos:oauth:grant-type:mfa-totp',
+        code: factorChallenge.code,
+        pending_authentication_token: afterRadar.pending_authentication_token,
+        authentication_challenge_id: afterRadar.authentication_challenge.id,
+      }),
+    );
+    expect(done.organization_id).toBe(org.id);
+    expect((await json(await req(`/user_management/invitations/by_token/${invited.token}`))).state).toBe('accepted');
+  });
+
   it('returns 404 for an unknown challenge', async () => {
     const res = await req('/user_management/radar_challenges/radar_challenge_missing');
     expect(res.status).toBe(404);

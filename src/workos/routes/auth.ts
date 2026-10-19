@@ -1117,7 +1117,7 @@ export function authRoutes(ctx: RouteContext): void {
         // back to 'unknown' as before.
         authMethod = 'EmailVerification';
         sessionAuthMethod = pending?.auth_method;
-        const primary = pending?.auth_method ?? 'Password';
+        const primary = pending?.auth_method ?? 'EmailVerification';
         if (user?.metadata.radar_email_challenge === 'true') {
           return issueRadarEmailChallenge(user, organizationId, primary);
         }
@@ -1313,6 +1313,7 @@ export function authRoutes(ctx: RouteContext): void {
 
         const enrolled = ws.authFactors.findBy('user_id', signedIn.id);
         if (enrolled.length > 0) {
+          invitation = deferredInvitation;
           return issueMfaChallenge(signedIn, pending.organization_id, pending.auth_method, enrolled[0]);
         }
 

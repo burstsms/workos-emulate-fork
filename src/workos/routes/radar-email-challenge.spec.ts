@@ -204,6 +204,45 @@ describe('radar email challenge', () => {
     expect(done.status).toBe(200);
   });
 
+  it('does not let a second login spend the first radar challenge', async () => {
+    const user = insertUser('radar@test.com', { radar_email_challenge: 'true' });
+    joinOrg(user.id);
+    const first = await json(await authenticate({ grant_type: 'password', email: user.email, password: 'secret' }));
+    const second = await json(await authenticate({ grant_type: 'password', email: user.email, password: 'secret' }));
+    const firstCode = (await json(await req(`/user_management/radar_challenges/${first.radar_challenge_id}`))).code;
+    const secondCode = (await json(await req(`/user_management/radar_challenges/${second.radar_challenge_id}`))).code;
+
+    const crossed = await authenticate({
+      grant_type: 'urn:workos:oauth:grant-type:radar-email-challenge:code',
+      code: firstCode,
+      radar_challenge_id: first.radar_challenge_id,
+      pending_authentication_token: second.pending_authentication_token,
+    });
+    expect(crossed.status).toBe(400);
+    expect((await json(crossed)).code).toBe('invalid_one_time_code');
+    expect((await json(await req(`/user_management/radar_challenges/${first.radar_challenge_id}`))).code).toBe(
+      firstCode,
+    );
+    expect((await json(await req(`/user_management/radar_challenges/${second.radar_challenge_id}`))).code).toBe(
+      secondCode,
+    );
+
+    const done = await authenticate({
+      grant_type: 'urn:workos:oauth:grant-type:radar-email-challenge:code',
+      code: firstCode,
+      radar_challenge_id: first.radar_challenge_id,
+      pending_authentication_token: first.pending_authentication_token,
+    });
+    expect(done.status).toBe(200);
+    const other = await authenticate({
+      grant_type: 'urn:workos:oauth:grant-type:radar-email-challenge:code',
+      code: secondCode,
+      radar_challenge_id: second.radar_challenge_id,
+      pending_authentication_token: second.pending_authentication_token,
+    });
+    expect(other.status).toBe(200);
+  });
+
   it('asks for the authenticator after the radar code', async () => {
     const user = insertUser('radar@test.com', { radar_email_challenge: 'true' });
     joinOrg(user.id);

@@ -50,6 +50,8 @@ interface PendingAuth {
   invitation_token?: string | null;
   /** The only grant that may consume this token. A different grant leaves it in place. */
   stage?: 'radar_email_challenge' | 'mfa' | 'email_verification' | 'organization_selection';
+  /** Set on a radar challenge so a later login's code cannot spend this token. */
+  radar_challenge_id?: string;
 }
 
 /**
@@ -798,14 +800,6 @@ export function authRoutes(ctx: RouteContext): void {
       orgId: string | null,
       primaryMethod: string,
     ) => {
-      const pendingToken = generateId('pending');
-      store.setData(`${STORE_KEY_PREFIXES.pendingAuth}${pendingToken}`, {
-        user_id: challenged.id,
-        organization_id: orgId,
-        auth_method: primaryMethod,
-        invitation_token: invitation?.token ?? null,
-        stage: 'radar_email_challenge',
-      });
       const now = new Date().toISOString();
       const challenge: RadarEmailChallengeRecord = {
         id: generateId('radar_challenge'),
@@ -817,6 +811,15 @@ export function authRoutes(ctx: RouteContext): void {
         created_at: now,
         updated_at: now,
       };
+      const pendingToken = generateId('pending');
+      store.setData(`${STORE_KEY_PREFIXES.pendingAuth}${pendingToken}`, {
+        user_id: challenged.id,
+        organization_id: orgId,
+        auth_method: primaryMethod,
+        invitation_token: invitation?.token ?? null,
+        stage: 'radar_email_challenge',
+        radar_challenge_id: challenge.id,
+      });
       store.setData(radarChallengeKey(challenge.id), challenge);
       store.getData<EventBus>(STORE_KEYS.eventBus)?.emit({
         event: 'radar.challenge_created',
@@ -1293,7 +1296,7 @@ export function authRoutes(ctx: RouteContext): void {
         requireStage(pending, 'radar_email_challenge');
 
         const challenge = store.getData<RadarEmailChallengeRecord>(radarChallengeKey(challengeId));
-        if (!challenge || challenge.user_id !== pending.user_id) {
+        if (!challenge || challenge.user_id !== pending.user_id || challenge.id !== pending.radar_challenge_id) {
           throw new WorkOSApiError(400, 'Invalid one-time code', 'invalid_one_time_code');
         }
         if (isExpired(challenge.expires_at)) {

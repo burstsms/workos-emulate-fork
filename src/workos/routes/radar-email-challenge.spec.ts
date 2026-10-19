@@ -137,6 +137,11 @@ describe('radar email challenge', () => {
     expect(session.user.email).toBe('radar@test.com');
     expect(session.organization_id).toBe(org.id);
     expect(session.authentication_method).toBe('Password');
+    expect(
+      getWorkOSStore(store)
+        .events.all()
+        .some((event) => event.event === 'authentication.password_succeeded'),
+    ).toBe(true);
 
     expect((await req(`/user_management/radar_challenges/${body.radar_challenge_id}`)).status).toBe(404);
   });
@@ -279,6 +284,44 @@ describe('radar email challenge', () => {
     expect(done.status).toBe(200);
     expect(await json(done)).not.toHaveProperty('authentication_method');
     expect(ws.sessions.findBy('user_id', user.id)[0]?.auth_method).toBe('unknown');
+  });
+
+  it('emits email verification succeeded when a tokenless verification finishes through radar', async () => {
+    const user = insertUser('radar@test.com', { radar_email_challenge: 'true' }, false);
+    const ws = getWorkOSStore(store);
+    const verification = ws.emailVerifications.insert({
+      object: 'email_verification',
+      user_id: user.id,
+      email: user.email,
+      code: '424242',
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+    });
+
+    const challenged = await json(
+      await authenticate({
+        grant_type: 'urn:workos:oauth:grant-type:email-verification:code',
+        user_id: user.id,
+        code: verification.code,
+      }),
+    );
+    expect(challenged.code).toBe('radar_email_challenge');
+    const pending = store.getData<{ auth_method: string }>(`pending_auth:${challenged.pending_authentication_token}`);
+    expect(pending?.auth_method).toBe('EmailVerification');
+
+    const radar = await json(await req(`/user_management/radar_challenges/${challenged.radar_challenge_id}`));
+    const done = await json(
+      await authenticate({
+        grant_type: 'urn:workos:oauth:grant-type:radar-email-challenge:code',
+        code: radar.code,
+        radar_challenge_id: challenged.radar_challenge_id,
+        pending_authentication_token: challenged.pending_authentication_token,
+      }),
+    );
+    expect(done).not.toHaveProperty('authentication_method');
+    expect(ws.sessions.findBy('user_id', user.id)[0]?.auth_method).toBe('unknown');
+    const events = ws.events.all().map((event) => event.event);
+    expect(events).toContain('authentication.email_verification_succeeded');
+    expect(events).not.toContain('authentication.password_succeeded');
   });
 
   it('keeps an invitation across the radar code and the authenticator', async () => {

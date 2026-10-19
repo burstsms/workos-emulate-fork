@@ -1320,7 +1320,8 @@ export function authRoutes(ctx: RouteContext): void {
         user = signedIn;
         organizationId = pending.organization_id;
         invitation = deferredInvitation;
-        authMethod = 'Password';
+        // Radar has no authentication.radar_* event, so this reports the method that reached it.
+        authMethod = pending.auth_method;
         sessionAuthMethod = pending.auth_method;
         break;
       }

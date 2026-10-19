@@ -144,8 +144,8 @@ export function userProfileRoutes(ctx: RouteContext): void {
   app.get('/_widgets/UserProfile/me', (c) => c.json(profile(userFor(c))));
 
   app.post('/_widgets/UserProfile/me', async (c) => {
-    const user = userFor(c);
     const body = await parseJsonBody(c);
+    const user = userFor(c);
     const firstName = optionalString(body, 'firstName');
     const lastName = optionalString(body, 'lastName');
     const locale = optionalString(body, 'locale');
@@ -162,8 +162,8 @@ export function userProfileRoutes(ctx: RouteContext): void {
   });
 
   app.post('/_widgets/UserProfile/update-password', async (c) => {
-    const user = userFor(c);
     const body = await parseJsonBody(c);
+    const user = userFor(c);
     if (!user.password_hash || !verifyPassword(String(body.currentPassword ?? ''), user.password_hash)) {
       throw new WorkOSApiError(400, 'Invalid credentials', 'invalid_credentials');
     }
@@ -192,10 +192,10 @@ export function userProfileRoutes(ctx: RouteContext): void {
   });
 
   app.post('/_widgets/UserProfile/create-password', async (c) => {
+    const body = await parseJsonBody(c);
     const user = userFor(c);
     requireElevated(c, user.id);
     if (user.password_hash) throw new WorkOSApiError(400, 'Password is already set', 'password_already_set');
-    const body = await parseJsonBody(c);
     ws.users.update(user.id, { password_hash: hashPassword(requirePassword(body.password)) });
     return c.json({ success: true }, 201);
   });
